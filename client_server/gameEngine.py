@@ -1,4 +1,4 @@
-import argparse, json, copy, time
+import argparse, json, copy, time, os
 from typing import List, Optional, Dict, Any, Tuple
 
 # Agent factory now expects only (side, strategy)
@@ -766,11 +766,6 @@ def run_gui(mode:str, circle_strategy:str, square_strategy:str, load_file:Option
     game_over = False
 
     turn_start = time.time()
-    turn_begin_time = turn_start
-
-    def log_ply(player: str, duration: float):
-        remaining = max(0.0, timers.get(player, 0.0))
-        print(f"[PlyTime] {player.title()} took {duration:.3f}s (remaining {remaining:.2f}s)")
 
     while True:
         clock.tick(FPS)
@@ -800,28 +795,28 @@ def run_gui(mode:str, circle_strategy:str, square_strategy:str, load_file:Option
             ai_end = time.time()
             ai_elapsed = ai_end - ai_start
             timers[current] -= ai_elapsed
-            log_ply(current, ai_elapsed)
             if timers[current] <= 0:
                 winner = opponent(current); msg = f"{current.title()} timed out. {winner.title()} wins!"; game_over = True
             else:
                 if move:
                     ok, info = validate_and_apply_move(board, move, current, rows, cols, score_cols)
-                    msg = f"AI {current}: {info}"
+                    msg = f"AI {current} -> {move}: {info}"
+                    try:
+                        print(f"[GUI] AI {current} -> {move}\n[GUI] Result: {info}")
+                    except Exception:
+                        pass
                     if ok:
                         w = check_win(board, rows, cols, score_cols)
                         if w: winner = w; msg = f"{w.title()} wins!"; game_over = True
                         current = opponent(current)
                         selected=None; highlights=set(); action_mode=None; push_stage=None; push_candidate=None
-                        turn_start = time.time()
-                        turn_begin_time = turn_start
+                        turn_start = time.time()  # NEW: reset timer when switching to next (human) turn
                     else:
                         current = opponent(current)
                         turn_start = time.time()
-                        turn_begin_time = turn_start
                 else:
                     current = opponent(current)
                     turn_start = time.time()
-                    turn_begin_time = turn_start
             draw_board(screen, board, rows, cols, score_cols, selected, highlights, msg, timers, current)
             turn += 1
             # print(turn)
@@ -857,15 +852,15 @@ def run_gui(mode:str, circle_strategy:str, square_strategy:str, load_file:Option
                     if p and p.owner==current and p.side=="river":
                         m = {"action":"rotate","from":[sx,sy]}
                         ok,info = validate_and_apply_move(board,m,current,rows,cols,score_cols)
-                        msg = info
+                        msg = f"{current} -> {m}: {info}"
+                        try:
+                            print(f"[GUI] {current} -> {m}\n[GUI] Result: {info}")
+                        except Exception:
+                            pass
                         if ok:
-                            move_duration = time.time() - turn_begin_time
-                            log_ply(current, move_duration)
                             w = check_win(board, rows, cols, score_cols)
                             if w: winner=w; msg = f"{w.title()} wins!"; game_over = True
                             current = opponent(current); selected=None; highlights=set(); action_mode=None
-                            turn_start = time.time()
-                            turn_begin_time = turn_start
                     else:
                         msg = "Rotate needs selected river piece"
                 if action_mode=="flip" and selected:
@@ -874,27 +869,23 @@ def run_gui(mode:str, circle_strategy:str, square_strategy:str, load_file:Option
                         ori = "horizontal" if ev.key==pygame.K_h else "vertical"
                         m={"action":"flip","from":[sx,sy],"orientation":ori}
                         ok,info = validate_and_apply_move(board,m,current,rows,cols,score_cols)
-                        msg = info
+                        msg = f"{current} -> {m}: {info}"
+                        try:
+                            print(f"[GUI] {current} -> {m}\n[GUI] Result: {info}")
+                        except Exception:
+                            pass
                         if ok:
-                            move_duration = time.time() - turn_begin_time
-                            log_ply(current, move_duration)
                             w = check_win(board, rows, cols, score_cols)
                             if w: winner=w; msg = f"{w.title()} wins!"; game_over = True
                             current = opponent(current); selected=None; highlights=set(); action_mode=None
-                            turn_start = time.time()
-                            turn_begin_time = turn_start
                     elif ev.key == pygame.K_f:
                         m={"action":"flip","from":[sx,sy]}
                         ok,info = validate_and_apply_move(board,m,current,rows,cols,score_cols)
                         msg = info
                         if ok:
-                            move_duration = time.time() - turn_begin_time
-                            log_ply(current, move_duration)
                             w = check_win(board, rows, cols, score_cols)
                             if w: winner=w; msg = f"{w.title()} wins!"; game_over = True
                             current = opponent(current); selected=None; highlights=set(); action_mode=None
-                            turn_start = time.time()
-                            turn_begin_time = turn_start
 
             if ev.type == pygame.MOUSEBUTTONDOWN and ev.button==1:
                 # measure elapsed thinking time before move
@@ -933,17 +924,18 @@ def run_gui(mode:str, circle_strategy:str, square_strategy:str, load_file:Option
                                 dx,dy = rx-sx, ry-sy
                                 m={"action":"move","from":[sx,sy],"to":[rx,ry],"pushed_to":[rx+dx,ry+dy]}
                             ok,info = validate_and_apply_move(board,m,current,rows,cols,score_cols)
-                            msg = info
+                            msg = f"{current} -> {m}: {info}"
+                            try:
+                                print(f"[GUI] {current} -> {m}\n[GUI] Result: {info}")
+                            except Exception:
+                                pass
                             if ok:
-                                move_duration = time.time() - turn_begin_time
-                                log_ply(current, move_duration)
                                 w = check_win(board,rows,cols,score_cols)
                                 if w: winner=w; msg=f"{w.title()} wins!"; game_over=True
                                 current = opponent(current)
                                 selected=None; highlights=set(); action_mode=None
                                 push_stage=None; push_candidate=None
-                                turn_start = time.time()
-                                turn_begin_time = turn_start
+                                turn_start = time.time()  # NEW: reset for next turn
 
                     elif action_mode=="push":
                         info = compute_valid_targets(board,sx,sy,current,rows,cols,score_cols)
@@ -970,33 +962,35 @@ def run_gui(mode:str, circle_strategy:str, square_strategy:str, load_file:Option
                                        "to":[push_candidate[0],push_candidate[1]],
                                        "pushed_to":[rx,ry]}
                                     ok,info = validate_and_apply_move(board,m,current,rows,cols,score_cols)
-                                    msg=info
+                                    msg=f"{current} -> {m}: {info}"
+                                    try:
+                                        print(f"[GUI] {current} -> {m}\n[GUI] Result: {info}")
+                                    except Exception:
+                                        pass
                                     push_stage=None; push_candidate=None; highlights=set(); action_mode=None
                                     if ok:
-                                        move_duration = time.time() - turn_begin_time
-                                        log_ply(current, move_duration)
                                         w = check_win(board,rows,cols,score_cols)
                                         if w: winner=w; msg=f"{w.title()} wins!"; game_over=True
                                         current = opponent(current)
                                         selected=None
-                                        turn_start = time.time()
-                                        turn_begin_time = turn_start
+                                        turn_start = time.time()  # NEW
 
                     elif action_mode=="flip":
                         p = board[sy][sx]
                         if p.side=="river":
                             m={"action":"flip","from":[sx,sy]}
                             ok,info = validate_and_apply_move(board,m,current,rows,cols,score_cols)
-                            msg=info
+                            msg=f"{current} -> {m}: {info}"
+                            try:
+                                print(f"[GUI] {current} -> {m}\n[GUI] Result: {info}")
+                            except Exception:
+                                pass
                             if ok:
-                                move_duration = time.time() - turn_begin_time
-                                log_ply(current, move_duration)
                                 w = check_win(board,rows,cols,score_cols)
                                 if w: winner=w; msg=f"{w.title()} wins!"; game_over=True
                                 current = opponent(current)
                                 selected=None; action_mode=None
-                                turn_start = time.time()
-                                turn_begin_time = turn_start
+                                turn_start = time.time()  # NEW
                         else:
                             msg = "Press H/V for stone->river in flip mode"
 
@@ -1009,16 +1003,17 @@ def run_gui(mode:str, circle_strategy:str, square_strategy:str, load_file:Option
                                 dx,dy = rx-sx, ry-sy
                                 m={"action":"move","from":[sx,sy],"to":[rx,ry],"pushed_to":[rx+dx,ry+dy]}
                             ok,info = validate_and_apply_move(board,m,current,rows,cols,score_cols)
-                            msg=info
+                            msg=f"{current} -> {m}: {info}"
+                            try:
+                                print(f"[GUI] {current} -> {m}\n[GUI] Result: {info}")
+                            except Exception:
+                                pass
                             if ok:
-                                move_duration = time.time() - turn_begin_time
-                                log_ply(current, move_duration)
                                 w = check_win(board,rows,cols,score_cols)
                                 if w: winner=w; msg=f"{w.title()} wins!"; game_over=True
                                 current = opponent(current)
                                 selected=None; highlights=set(); action_mode=None
-                                turn_start = time.time()
-                                turn_begin_time = turn_start
+                                turn_start = time.time()  # NEW
                         else:
                             newp = board[ry][rx]
                             if newp and newp.owner==current:
@@ -1113,7 +1108,8 @@ def run_cli(mode:str, circle_strategy:str, square_strategy:str, load_file:Option
                 if turn > 1000:
                     print("Turn limit reached -> draw"); break
                 # do not count the "press enter to continue" as clock time; skip it
-                input("\nPress Enter to continue...")  # keep for readability
+                if os.environ.get("A2_NONINTERACTIVE") != "1":
+                    input("\nPress Enter to continue...")  # keep for readability
                 continue
             ok,msg = validate_and_apply_move(board, move, current, rows, cols, score_cols)
             print(f"AI {current} -> {move}")
@@ -1177,7 +1173,8 @@ def run_cli(mode:str, circle_strategy:str, square_strategy:str, load_file:Option
 
         # Press Enter pause for readability — DO NOT count this time as player's clock (unchanged behavior)
         try:
-            _ = input("\nPress Enter to continue...")
+            if os.environ.get("A2_NONINTERACTIVE") != "1":
+                _ = input("\nPress Enter to continue...")
         except KeyboardInterrupt:
             pass
         
